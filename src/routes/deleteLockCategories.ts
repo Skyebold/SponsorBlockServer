@@ -2,8 +2,9 @@ import {Request, Response} from "express";
 import {isUserVIP} from "../utils/isUserVIP";
 import {getHash} from "../utils/getHash";
 import {db} from "../databases/databases";
-import { Category, VideoID } from "../types/segments.model";
+import { VideoID } from "../types/segments.model";
 import { UserID } from "../types/user.model";
+import {Category} from "../types/videoSegments.model";
 
 export async function deleteLockCategoriesEndpoint(req: Request, res: Response): Promise<Response> {
     // Collect user input data

@@ -10,7 +10,7 @@ import {getFormattedTime} from "../utils/getFormattedTime";
 import {isUserTrustworthy} from "../utils/isUserTrustworthy";
 import {dispatchEvent} from "../utils/webhookUtils";
 import {Request, Response} from "express";
-import { ActionType, Category, CategoryActionType, IncomingSegment, SegmentUUID, Service, VideoDuration, VideoID } from "../types/segments.model";
+import { ActionType, SegmentUUID, Service, VideoID } from "../types/segments.model";
 import { deleteLockCategories } from "./deleteLockCategories";
 import { getCategoryActionType } from "../utils/categoryInfo";
 import { QueryCacher } from "../utils/queryCacher";
@@ -19,6 +19,7 @@ import { APIVideoData, APIVideoInfo } from "../types/youtubeApi.model";
 import { UserID } from "../types/user.model";
 import { isUserVIP } from "../utils/isUserVIP";
 import { parseUserAgent } from "../utils/userAgent";
+import {Category, CategoryActionType, IncomingSegment, VideoDuration} from "../types/videoSegments.model";
 
 type CheckResult = {
     pass: boolean,

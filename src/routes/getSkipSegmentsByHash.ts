@@ -1,7 +1,8 @@
 import {hashPrefixTester} from "../utils/hashPrefixTester";
 import {getSegmentsByHash} from "./getSkipSegments";
 import {Request, Response} from "express";
-import { ActionType, Category, SegmentUUID, Service, VideoIDHash } from "../types/segments.model";
+import { ActionType, SegmentUUID, Service, VideoIDHash } from "../types/segments.model";
+import {Category} from "../types/videoSegments.model";
 
 export async function getSkipSegmentsByHash(req: Request, res: Response): Promise<Response> {
     let hashPrefix = req.params.prefix as VideoIDHash;

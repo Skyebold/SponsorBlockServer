@@ -1,4 +1,3 @@
-import {db} from "../databases/databases";
 import {getHash} from "../utils/getHash";
 import {Request, Response} from "express";
 import { config } from "../config";
@@ -6,6 +5,7 @@ import { Category, Service, VideoID, VideoIDHash } from "../types/segments.model
 import { UserID } from "../types/user.model";
 import { QueryCacher } from "../utils/queryCacher";
 import { isUserVIP } from "../utils/isUserVIP";
+import {Category} from "../types/videoSegments.model";
 
 export async function shadowBanUser(req: Request, res: Response): Promise<Response> {
     const userID = req.query.userID as UserID;

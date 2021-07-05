@@ -10,9 +10,10 @@ import {getIP} from "../utils/getIP";
 import {getHash} from "../utils/getHash";
 import {config} from "../config";
 import { UserID } from "../types/user.model";
-import { Category, CategoryActionType, HashedIP, IPAddress, SegmentUUID, Service, VideoID, VideoIDHash, Visibility } from "../types/segments.model";
+import {  HashedIP, IPAddress, SegmentUUID, Service, VideoID, VideoIDHash } from "../types/segments.model";
 import { getCategoryActionType } from "../utils/categoryInfo";
 import { QueryCacher } from "../utils/queryCacher";
+import { Category, CategoryActionType } from "../types/videoSegments.model";
 
 const voteTypes = {
     normal: 0,
