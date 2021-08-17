@@ -19,7 +19,7 @@ import { APIVideoData, APIVideoInfo } from "../types/youtubeApi.model";
 import { UserID } from "../types/user.model";
 import { isUserVIP } from "../utils/isUserVIP";
 import { parseUserAgent } from "../utils/userAgent";
-import {Category, CategoryActionType, IncomingSegment, VideoDuration} from "../types/videoSegments.model";
+import {Category, CategoryActionType, IncomingVideoSegment, VideoDuration} from "../types/videoSegments.model";
 
 type CheckResult = {
     pass: boolean,
@@ -535,7 +535,7 @@ function preprocessInput(req: Request) {
     const videoDurationParam: VideoDuration = (parseFloat(req.query.videoDuration || req.body.videoDuration) || 0) as VideoDuration;
     const videoDuration = videoDurationParam;
 
-    let segments = req.body.segments as IncomingSegment[];
+    let segments = req.body.segments as IncomingVideoSegment[];
     if (segments === undefined) {
         // Use query instead
         segments = [{

@@ -1,11 +1,11 @@
 import { Request, Response } from "express";
 import { db } from "../databases/databases";
 import { SegmentUUID } from "../types/segments.model";
-import { DBSegment } from "../types/videoSegments.model";
+import { VideoDBSegment } from "../types/videoSegments.model";
 
 const isValidSegmentUUID = (str: string): boolean => /^([a-f0-9]{64}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/.test(str);
 
-async function getSegmentFromDBByUUID(UUID: SegmentUUID): Promise<DBSegment> {
+async function getSegmentFromDBByUUID(UUID: SegmentUUID): Promise<VideoDBSegment> {
     try {
         return await db.prepare("get", `SELECT * FROM "sponsorTimes" WHERE "UUID" = ?`, [UUID]);
     } catch (err) {
@@ -13,8 +13,8 @@ async function getSegmentFromDBByUUID(UUID: SegmentUUID): Promise<DBSegment> {
     }
 }
 
-async function getSegmentsByUUID(UUIDs: SegmentUUID[]): Promise<DBSegment[]> {
-    const DBSegments: DBSegment[] = [];
+async function getSegmentsByUUID(UUIDs: SegmentUUID[]): Promise<VideoDBSegment[]> {
+    const DBSegments: VideoDBSegment[] = [];
     for (const UUID of UUIDs) {
         // if UUID is invalid, skip
         if (!isValidSegmentUUID(UUID)) continue;
@@ -23,7 +23,7 @@ async function getSegmentsByUUID(UUIDs: SegmentUUID[]): Promise<DBSegment[]> {
     return DBSegments;
 }
 
-async function handleGetSegmentInfo(req: Request, res: Response): Promise<DBSegment[]> {
+async function handleGetSegmentInfo(req: Request, res: Response): Promise<VideoDBSegment[]> {
     // If using params instead of JSON, only one UUID can be pulled
     let UUIDs = req.query.UUIDs
         ? JSON.parse(req.query.UUIDs as string)

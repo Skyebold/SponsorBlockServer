@@ -1,4 +1,6 @@
 import {HashedValue} from "./hash.model";
+import {UserID} from "./user.model";
+import {Category, VideoDuration} from "./videoSegments.model";
 
 export type SegmentUUID = string  & { __segmentUUIDBrand: unknown };
 export type VideoID = string & { __videoIDBrand: unknown };
@@ -23,6 +25,33 @@ export enum Service {
     // Lbry = 'Lbry'
 }
 
+export interface Segment {
+    category: Category;
+    segment: number[];
+    UUID: SegmentUUID;
+    videoDuration: VideoDuration;
+}
+
+export interface BaseDBSegment<T> {
+    category: T;
+    startTime: number;
+    endTime: number;
+    UUID: SegmentUUID;
+    userID: UserID;
+    votes: number;
+    locked: boolean;
+    required: boolean; // Requested specifically from the client
+    shadowHidden: Visibility;
+    videoID: VideoID;
+    reputation: number;
+    hashedVideoID: VideoIDHash;
+}
+
+export enum Visibility {
+    VISIBLE = 0,
+    HIDDEN = 1
+}
+
 export interface VotableObject {
     votes: number;
     reputation: number;
@@ -30,4 +59,9 @@ export interface VotableObject {
 
 export interface VotableObjectWithWeight extends VotableObject {
     weight: number;
+}
+
+export interface VideoData {
+    hash: VideoIDHash;
+    segments: Segment[];
 }
