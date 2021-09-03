@@ -1,5 +1,6 @@
 import { SBRecord } from "./lib.model";
 import {BaseCategory, BaseDBSegment, HashedIP, SegmentUUID, VideoID} from "./segments.model";
+import {UserID} from "./user.model";
 
 export type VideoDuration = number & { __videoDurationBrand: unknown };
 export type Category = (BaseCategory | "intro" | "outro" | "preview" | "music_offtopic" | "highlight") & { __categoryBrand: unknown };
@@ -32,11 +33,19 @@ export interface OverlappingSegmentGroup {
 }
 
 export interface SegmentCache {
-    shadowHiddenSegmentIPs: SBRecord<VideoID, {hashedIP: HashedIP}[]>,
+    shadowHiddenSegmentIPs: SBRecord<VideoID, SBRecord<string, {hashedIP: HashedIP}[]>>,
     userHashedIP?: HashedIP
 }
 
 export enum CategoryActionType {
     Skippable,
     POI
+}
+
+
+export interface LockCategory {
+    category: Category,
+    reason: string,
+    videoID: VideoID,
+    userID: UserID
 }

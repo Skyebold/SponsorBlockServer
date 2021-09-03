@@ -43,8 +43,11 @@ export interface BaseDBSegment<T> {
     required: boolean; // Requested specifically from the client
     shadowHidden: Visibility;
     videoID: VideoID;
+    videoDuration: VideoDuration;
     reputation: number;
     hashedVideoID: VideoIDHash;
+    timeSubmitted: number;
+    userAgent: string;
 }
 
 export enum Visibility {
