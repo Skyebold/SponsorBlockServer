@@ -43,6 +43,7 @@ import ExpressPromiseRouter from "express-promise-router";
 import { Server } from "http";
 import { youtubeApiProxy } from "./routes/youtubeApiProxy";
 import { postDescriptionSegments } from "./routes/postDescriptionSegments";
+import { endpoint as getDescriptionSegments } from "./routes/getDescriptionSegments";
 
 export function createServer(callback: () => void): Server {
     // Create a service (the app object is just a callback).
@@ -94,10 +95,11 @@ function setupRoutes(router: Router) {
     router.get("/api/skipSegments/:prefix", getSkipSegmentsByHash);
 
 	//add the prune description functions
-    //router.get("/api/descriptionSegments", getDescriptionSegments);  // TODO
+    router.get("/api/descriptionSegments", getDescriptionSegments); 
     router.post("/api/descriptionSegments", postDescriptionSegments);
 
 	// TODO: Privacy protecting skip segments?
+	//router.get("/api/descriptionSegments/:prefix", getDescriptionSegmentsByHash);
 
     //voting endpoint
     router.get("/api/voteOnSponsorTime", ...voteEndpoints);
