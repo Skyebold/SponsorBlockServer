@@ -1,6 +1,6 @@
 import { Logger } from "../utils/logger";
 import { IDatabase, QueryType } from "./IDatabase";
-import { Client, Pool, types } from "pg";
+import { Client, Pool, PoolClient, types } from "pg";
 
 import fs from "fs";
 
@@ -38,7 +38,7 @@ export class Postgres implements IDatabase {
                 await this.applyIndexes(this.config.fileNamePrefix, this.config.dbSchemaFolder);
             } catch (e) {
                 Logger.warn("Applying indexes failed. See https://github.com/ajayyy/SponsorBlockServer/wiki/Postgres-Extensions for more information.");
-                Logger.warn(e);
+                Logger.warn(e as string);
             }
         }
     }
@@ -55,8 +55,10 @@ export class Postgres implements IDatabase {
 
         Logger.debug(`prepare (postgres): type: ${type}, query: ${query}, params: ${params}`);
 
+        let client: PoolClient;
         try {
-            const queryResult = await this.pool.query({text: query, values: params});
+            client = await this.pool.connect();
+            const queryResult = await client.query({ text: query, values: params });
 
             switch (type) {
                 case "get": {
@@ -75,6 +77,8 @@ export class Postgres implements IDatabase {
             }
         } catch (err) {
             Logger.error(`prepare (postgres): ${err}`);
+        } finally {
+            client?.release();
         }
     }
 

@@ -1,5 +1,5 @@
-import {config} from "../config";
-import {Request} from "express";
+import { config } from "../config";
+import { Request } from "express";
 import { IPAddress } from "../types/segments.model";
 
 export function getIP(req: Request): IPAddress {
@@ -8,13 +8,13 @@ export function getIP(req: Request): IPAddress {
     }
 
     switch (config.behindProxy as string) {
-    case "X-Forwarded-For":
-        return req.headers["x-forwarded-for"] as IPAddress;
-    case "Cloudflare":
-        return req.headers["cf-connecting-ip"] as IPAddress;
-    case "X-Real-IP":
-        return req.headers["x-real-ip"] as IPAddress;
-    default:
-        return req.connection.remoteAddress as IPAddress;
+        case "X-Forwarded-For":
+            return req.headers["x-forwarded-for"] as IPAddress;
+        case "Cloudflare":
+            return req.headers["cf-connecting-ip"] as IPAddress;
+        case "X-Real-IP":
+            return req.headers["x-real-ip"] as IPAddress;
+        default:
+            return req.connection.remoteAddress as IPAddress;
     }
 }

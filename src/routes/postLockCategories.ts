@@ -1,9 +1,10 @@
-import {Logger} from "../utils/logger";
-import {getHash} from "../utils/getHash";
-import {isUserVIP} from "../utils/isUserVIP";
-import {db} from "../databases/databases";
-import {Request, Response} from "express";
+import { Logger } from "../utils/logger";
+import { getHash } from "../utils/getHash";
+import { isUserVIP } from "../utils/isUserVIP";
+import { db } from "../databases/databases";
+import { Request, Response } from "express";
 import { VideoIDHash } from "../types/segments.model";
+import { getService } from "../utils/getService";
 
 export async function postLockCategories(req: Request, res: Response): Promise<string[]> {
     // Collect user input data
@@ -11,6 +12,7 @@ export async function postLockCategories(req: Request, res: Response): Promise<s
     let userID = req.body.userID;
     const categories = req.body.categories;
     const reason: string = req.body.reason ?? "";
+    const service = getService(req.body.service);
 
     // Check input data is valid
     if (!videoID
@@ -37,7 +39,7 @@ export async function postLockCategories(req: Request, res: Response): Promise<s
     }
 
     // Get existing lock categories markers
-    let noCategoryList = await db.prepare("all", 'SELECT "category" from "lockCategories" where "videoID" = ?', [videoID]);
+    let noCategoryList = await db.prepare("all", 'SELECT "category" from "lockCategories" where "videoID" = ? AND "service" = ?', [videoID, service]);
     if (!noCategoryList || noCategoryList.length === 0) {
         noCategoryList = [];
     } else {
@@ -65,10 +67,10 @@ export async function postLockCategories(req: Request, res: Response): Promise<s
     // create database entry
     for (const category of categoriesToMark) {
         try {
-            await db.prepare("run", `INSERT INTO "lockCategories" ("videoID", "userID", "category", "hashedVideoID", "reason") VALUES(?, ?, ?, ?, ?)`, [videoID, userID, category, hashedVideoID, reason]);
+            await db.prepare("run", `INSERT INTO "lockCategories" ("videoID", "userID", "category", "hashedVideoID", "reason", "service") VALUES(?, ?, ?, ?, ?, ?)`, [videoID, userID, category, hashedVideoID, reason, service]);
         } catch (err) {
-            Logger.error(`Error submitting 'lockCategories' marker for category '${category}' for video '${videoID}'`);
-            Logger.error(err);
+            Logger.error(`Error submitting 'lockCategories' marker for category '${category}' for video '${videoID}' (${service})`);
+            Logger.error(err as string);
             res.status(500).json({
                 message: "Internal Server Error: Could not write marker to the database.",
             });
@@ -85,11 +87,11 @@ export async function postLockCategories(req: Request, res: Response): Promise<s
         for (const category of overlapCategories) {
             try {
                 await db.prepare("run",
-                    'UPDATE "lockCategories" SET "reason" = ?, "userID" = ? WHERE "videoID" = ? AND "category" = ?',
-                    [reason, userID, videoID, category]);
+                    'UPDATE "lockCategories" SET "reason" = ?, "userID" = ? WHERE "videoID" = ? AND "category" = ? AND "service" = ?',
+                    [reason, userID, videoID, category, service]);
             } catch (err) {
-                Logger.error(`Error submitting 'lockCategories' marker for category '${category}' for video '${videoID}'`);
-                Logger.error(err);
+                Logger.error(`Error submitting 'lockCategories' marker for category '${category}' for video '${videoID} (${service})'`);
+                Logger.error(err as string);
                 res.status(500).json({
                     message: "Internal Server Error: Could not write marker to the database.",
                 });

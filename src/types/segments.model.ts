@@ -9,11 +9,6 @@ export type VideoIDHash = VideoID & HashedValue;
 export type IPAddress = string & { __ipAddressBrand: unknown };
 export type HashedIP = IPAddress & HashedValue;
 
-export enum ActionType {
-    Skip = "skip",
-    Mute = "mute",
-}
-
 // Uncomment as needed
 export enum Service {
     YouTube = "YouTube",
@@ -39,7 +34,9 @@ export interface BaseDBSegment<T> {
     UUID: SegmentUUID;
     userID: UserID;
     votes: number;
+    views: number;
     locked: boolean;
+    hidden: boolean;
     required: boolean; // Requested specifically from the client
     shadowHidden: Visibility;
     videoID: VideoID;
@@ -48,6 +45,7 @@ export interface BaseDBSegment<T> {
     hashedVideoID: VideoIDHash;
     timeSubmitted: number;
     userAgent: string;
+    service: Service;
 }
 
 export enum Visibility {

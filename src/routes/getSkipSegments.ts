@@ -4,7 +4,6 @@ import { db, privateDB } from "../databases/databases";
 import { skipSegmentsHashKey, skipSegmentsKey } from "../utils/redisKeys";
 import { SBRecord } from "../types/lib.model";
 import { 
-    ActionType, 
     HashedIP, 
     IPAddress, 
     SegmentUUID,
@@ -26,10 +25,12 @@ import {
     CategoryActionType, VideoDBSegment,
     OverlappingSegmentGroup, VideoSegment,
     SegmentCache,
+	ActionType,
 } from "../types/videoSegments.model";
+import { getService } from "../utils/getService";
 
 
-async function prepareCategorySegments(req: Request, videoID: VideoID, category: Category, segments: VideoDBSegment[], cache: SegmentCache = {shadowHiddenSegmentIPs: {}}): Promise<Segment[]> {
+async function prepareCategorySegments(req: Request, videoID: VideoID, category: Category, segments: VideoDBSegment[], cache: SegmentCache = { shadowHiddenSegmentIPs: {} }): Promise<VideoSegment[]> {
     const shouldFilter: boolean[] = await Promise.all(segments.map(async (segment) => {
         if (segment.votes < -1 && !segment.required) {
             return false; //too untrustworthy, just ignore it
@@ -43,19 +44,20 @@ async function prepareCategorySegments(req: Request, videoID: VideoID, category:
 
         if (cache.shadowHiddenSegmentIPs[videoID] === undefined) cache.shadowHiddenSegmentIPs[videoID] = {};
         if (cache.shadowHiddenSegmentIPs[videoID][segment.timeSubmitted] === undefined) {
-            cache.shadowHiddenSegmentIPs[videoID][segment.timeSubmitted] = await privateDB.prepare("all", 'SELECT "hashedIP" FROM "sponsorTimes" WHERE "videoID" = ? AND "timeSubmitted"  = ?',
-                [videoID, segment.timeSubmitted]) as { hashedIP: HashedIP }[];
+            const service = getService(req?.query?.service as string);
+            cache.shadowHiddenSegmentIPs[videoID][segment.timeSubmitted] = await privateDB.prepare("all", 'SELECT "hashedIP" FROM "sponsorTimes" WHERE "videoID" = ? AND "timeSubmitted" = ? AND "service" = ?',
+                [videoID, segment.timeSubmitted, service]) as { hashedIP: HashedIP }[];
         }
 
         //if this isn't their ip, don't send it to them
-        return cache.shadowHiddenSegmentIPs[videoID][segment.timeSubmitted].some((shadowHiddenSegment) => {
+        return cache.shadowHiddenSegmentIPs[videoID][segment.timeSubmitted]?.some((shadowHiddenSegment) => {
             if (cache.userHashedIP === undefined) {
                 //hash the IP only if it's strictly necessary
                 cache.userHashedIP = getHash((getIP(req) + config.globalSalt) as IPAddress);
             }
 
             return shadowHiddenSegment.hashedIP === cache.userHashedIP;
-        });
+        }) ?? false;
     }));
 
     const filteredSegments = segments.filter((_, index) => shouldFilter[index]);
@@ -66,13 +68,15 @@ async function prepareCategorySegments(req: Request, videoID: VideoID, category:
         actionType: chosenSegment.actionType,
         segment: [chosenSegment.startTime, chosenSegment.endTime],
         UUID: chosenSegment.UUID,
+        locked: chosenSegment.locked,
+        votes: chosenSegment.votes,
         videoDuration: chosenSegment.videoDuration
     }));
 }
 
 async function getSegmentsByVideoID(req: Request, videoID: VideoID, categories: Category[],
     actionTypes: ActionType[], requiredSegments: SegmentUUID[], service: Service): Promise<VideoSegment[]> {
-    const cache: SegmentCache = {shadowHiddenSegmentIPs: {}};
+    const cache: SegmentCache = { shadowHiddenSegmentIPs: {} };
     const segments: VideoSegment[] = [];
 
     try {
@@ -97,7 +101,7 @@ async function getSegmentsByVideoID(req: Request, videoID: VideoID, categories: 
         return segments;
     } catch (err) {
         if (err) {
-            Logger.error(err);
+            Logger.error(err as string);
             return null;
         }
     }
@@ -105,7 +109,7 @@ async function getSegmentsByVideoID(req: Request, videoID: VideoID, categories: 
 
 async function getSegmentsByHash(req: Request, hashedVideoIDPrefix: VideoIDHash, categories: Category[],
     actionTypes: ActionType[], requiredSegments: SegmentUUID[], service: Service): Promise<SBRecord<VideoID, VideoData>> {
-    const cache: SegmentCache = {shadowHiddenSegmentIPs: {}};
+    const cache: SegmentCache = { shadowHiddenSegmentIPs: {} };
     const segments: SBRecord<VideoID, VideoData> = {};
 
     try {
@@ -142,10 +146,8 @@ async function getSegmentsByHash(req: Request, hashedVideoIDPrefix: VideoIDHash,
 
         return segments;
     } catch (err) {
-        if (err) {
-            Logger.error(err);
-            return null;
-        }
+        Logger.error(err as string);
+        return null;
     }
 }
 
@@ -200,7 +202,7 @@ function getWeightedRandomChoice<T extends VotableObject>(choices: T[], amountOf
         const weight = Math.exp(choice.votes * Math.max(1, choice.reputation + 1) + 3 + boost);
         totalWeight += Math.max(weight, 0);
 
-        return {...choice, weight};
+        return { ...choice, weight };
     });
 
     //iterate and find amountOfChoices choices
@@ -237,8 +239,8 @@ async function chooseSegments(segments: VideoDBSegment[], max: number): Promise<
     let currentGroup: OverlappingSegmentGroup;
     let cursor = -1; //-1 to make sure that, even if the 1st segment starts at 0, a new group is created
     for (const segment of segments) {
-        if (segment.startTime > cursor) {
-            currentGroup = {segments: [], votes: 0, reputation: 0, locked: false, required: false};
+        if (segment.startTime >= cursor) {
+            currentGroup = { segments: [], votes: 0, reputation: 0, locked: false, required: false };
             overlappingSegmentsGroups.push(currentGroup);
         }
 
@@ -336,10 +338,7 @@ async function handleGetSegments(req: Request, res: Response): Promise<VideoSegm
         return false;
     }
 
-    let service: Service = req.query.service ?? req.body.service ?? Service.YouTube;
-    if (!Object.values(Service).some((val) => val == service)) {
-        service = Service.YouTube;
-    }
+    const service = getService(req.query.service, req.body.service);
 
     const segments = await getSegmentsByVideoID(req, videoID, categories, actionTypes, requiredSegments, service);
 

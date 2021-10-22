@@ -1,11 +1,12 @@
-import {getHash} from "../utils/getHash";
-import {Request, Response} from "express";
+import { db } from "../databases/databases";
+import { getHash } from "../utils/getHash";
+import { Request, Response } from "express";
 import { config } from "../config";
-import { Category, Service, VideoID, VideoIDHash } from "../types/segments.model";
+import { Service, VideoID, VideoIDHash } from "../types/segments.model";
 import { UserID } from "../types/user.model";
 import { QueryCacher } from "../utils/queryCacher";
 import { isUserVIP } from "../utils/isUserVIP";
-import {Category} from "../types/videoSegments.model";
+import { Category } from "../types/videoSegments.model";
 
 export async function shadowBanUser(req: Request, res: Response): Promise<Response> {
     const userID = req.query.userID as UserID;
@@ -48,16 +49,7 @@ export async function shadowBanUser(req: Request, res: Response): Promise<Respon
 
             //find all previous submissions and hide them
             if (unHideOldSubmissions) {
-                await db.prepare("run", `UPDATE "sponsorTimes" SET "shadowHidden" = 1 WHERE "userID" = ? AND "category" in (${categories.map((c) => `'${c}'`).join(",")})
-                                AND NOT EXISTS ( SELECT "videoID", "category" FROM "lockCategories" WHERE
-                                "sponsorTimes"."videoID" = "lockCategories"."videoID" AND "sponsorTimes"."category" = "lockCategories"."category")`, [userID]);
-
-                // clear cache for all old videos
-                (await db.prepare("all", `SELECT "videoID", "hashedVideoID", "service", "votes", "views" FROM "sponsorTimes" WHERE "userID" = ?`, [userID]))
-                    .forEach((videoInfo: {category: Category, videoID: VideoID, hashedVideoID: VideoIDHash, service: Service, userID: UserID}) => {
-                        QueryCacher.clearVideoCache(videoInfo);
-                    }
-                    );
+                await unHideSubmissions(categories, userID);
             }
         } else if (!enabled && row.userCount > 0) {
             //remove them from the shadow ban list
@@ -66,7 +58,7 @@ export async function shadowBanUser(req: Request, res: Response): Promise<Respon
             //find all previous submissions and unhide them
             if (unHideOldSubmissions) {
                 const segmentsToIgnore = (await db.prepare("all", `SELECT "UUID" FROM "sponsorTimes" st
-                    JOIN "lockCategories" ns on "st"."videoID" = "ns"."videoID" AND st.category = ns.category WHERE "st"."userID" = ?`
+                    JOIN "lockCategories" ns on "st"."videoID" = "ns"."videoID" AND st.category = ns.category AND "st"."service" = "ns"."service" WHERE "st"."userID" = ?`
                 , [userID])).map((item: {UUID: string}) => item.UUID);
                 const allSegments = (await db.prepare("all", `SELECT "UUID" FROM "sponsorTimes" st WHERE "st"."userID" = ?`, [userID]))
                     .map((item: {UUID: string}) => item.UUID);
@@ -84,6 +76,16 @@ export async function shadowBanUser(req: Request, res: Response): Promise<Respon
                     return db.prepare("run", `UPDATE "sponsorTimes" SET "shadowHidden" = 0 WHERE "UUID" = ? AND "category" in (${categories.map((c) => `'${c}'`).join(",")})`, [UUID]);
                 }));
             }
+        // already shadowbanned
+        } else if (enabled && row.userCount > 0) {
+            // apply unHideOldSubmissions if applicable
+            if (unHideOldSubmissions) {
+                await unHideSubmissions(categories, userID);
+                return res.sendStatus(200);
+            }
+
+            // otherwise ban already exists, send 409
+            return res.sendStatus(409);
         }
     } else if (hashedIP) {
         //check to see if this user is already shadowbanned
@@ -114,4 +116,16 @@ export async function shadowBanUser(req: Request, res: Response): Promise<Respon
         }*/
     }
     return res.sendStatus(200);
+}
+
+async function unHideSubmissions(categories: string[], userID: UserID) {
+    await db.prepare("run", `UPDATE "sponsorTimes" SET "shadowHidden" = 1 WHERE "userID" = ? AND "category" in (${categories.map((c) => `'${c}'`).join(",")})
+                    AND NOT EXISTS ( SELECT "videoID", "category" FROM "lockCategories" WHERE
+                    "sponsorTimes"."videoID" = "lockCategories"."videoID" AND "sponsorTimes"."service" = "lockCategories"."service" AND "sponsorTimes"."category" = "lockCategories"."category")`, [userID]);
+
+    // clear cache for all old videos
+    (await db.prepare("all", `SELECT "videoID", "hashedVideoID", "service", "votes", "views" FROM "sponsorTimes" WHERE "userID" = ?`, [userID]))
+        .forEach((videoInfo: { category: Category; videoID: VideoID; hashedVideoID: VideoIDHash; service: Service; userID: UserID; }) => {
+            QueryCacher.clearVideoCache(videoInfo);
+        });
 }

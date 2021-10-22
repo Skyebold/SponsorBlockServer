@@ -1,5 +1,5 @@
 import fs from "fs";
-import {SBSConfig} from "./types/config.model";
+import { SBSConfig } from "./types/config.model";
 import packageJson from "../package.json";
 
 const isTestMode = process.env.npm_lifecycle_script === packageJson.scripts.test;
@@ -20,6 +20,16 @@ addDefaults(config, {
     readOnly: false,
     webhooks: [],
     categoryList: ["sponsor", "selfpromo", "interaction", "intro", "outro", "preview", "music_offtopic", "poi_highlight"],
+    categorySupport: {
+        sponsor: ["skip", "mute"],
+        selfpromo: ["skip", "mute"],
+        interaction: ["skip", "mute"],
+        intro: ["skip"],
+        outro: ["skip"],
+        preview: ["skip"],
+        music_offtopic: ["skip"],
+        poi_highlight: ["skip"],
+    },
     maxNumberOfActiveWarnings: 1,
     hoursAfterWarningExpires: 24,
     adminUserID: "",
@@ -50,6 +60,7 @@ addDefaults(config, {
     userCounterURL: null,
     newLeafURLs: null,
     maxRewardTimePerSegmentInSeconds: 600,
+    poiMinimumStartTime: 2,
     postgres: null,
     dumpDatabase: {
         enabled: false,

@@ -1,12 +1,12 @@
-import {db} from "../databases/databases";
-import {getHash} from "../utils/getHash";
-import {isUserVIP} from "../utils/isUserVIP";
-import {Request, Response} from "express";
-import {Logger} from "../utils/logger";
+import { db } from "../databases/databases";
+import { getHash } from "../utils/getHash";
+import { isUserVIP } from "../utils/isUserVIP";
+import { Request, Response } from "express";
+import { Logger } from "../utils/logger";
 import { HashedUserID, UserID } from "../types/user.model";
 import { getReputation } from "../utils/reputation";
 import { SegmentUUID } from "../types/segments.model";
-import {config} from "../config";
+import { config } from "../config";
 const maxRewardTime = config.maxRewardTimePerSegmentInSeconds;
 
 async function dbGetSubmittedSegmentSummary(userID: HashedUserID): Promise<{ minutesSaved: number, segmentCount: number }> {
@@ -43,12 +43,7 @@ async function dbGetIgnoredSegmentCount(userID: HashedUserID): Promise<number> {
 async function dbGetUsername(userID: HashedUserID) {
     try {
         const row = await db.prepare("get", `SELECT "userName" FROM "userNames" WHERE "userID" = ?`, [userID]);
-        if (row !== undefined) {
-            return row.userName;
-        } else {
-            //no username yet, just send back the userID
-            return userID;
-        }
+        return row?.userName ?? userID;
     } catch (err) {
         return false;
     }
@@ -121,7 +116,7 @@ const objSwitch = (cases: cases) => (defaultCase: string) => (key: string) =>
 const functionSwitch = (cases: cases) => (defaultCase: string) => (key: string) =>
     executeIfFunction(objSwitch(cases)(defaultCase)(key));
 
-const dbGetValue = async (userID: HashedUserID, property: string): Promise<string|SegmentUUID|number> => {
+const dbGetValue = (userID: HashedUserID, property: string): Promise<string|SegmentUUID|number> => {
     return functionSwitch({
         userID,
         userName: dbGetUsername(userID),
@@ -172,7 +167,7 @@ async function getUserInfo(req: Request, res: Response): Promise<Response> {
         responseObj[property] = await dbGetValue(hashedUserID, property);
     }
     // add minutesSaved and segmentCount after to avoid getting overwritten
-    if (paramValues.includes("minutesSaved")) { responseObj["minutesSaved"] = segmentsSummary.minutesSaved; }
+    if (paramValues.includes("minutesSaved")) responseObj["minutesSaved"] = segmentsSummary.minutesSaved;
     if (paramValues.includes("segmentCount")) responseObj["segmentCount"] = segmentsSummary.segmentCount;
     return res.send(responseObj);
 }

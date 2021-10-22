@@ -1,6 +1,6 @@
-import {db} from "../databases/databases";
-import {Logger} from "../utils/logger";
-import {Request, Response} from "express";
+import { db } from "../databases/databases";
+import { Logger } from "../utils/logger";
+import { Request, Response } from "express";
 import { config } from "../config";
 import util from "util";
 import fs from "fs";
@@ -215,7 +215,7 @@ async function queueDump(): Promise<void> {
 
             lastUpdate = startTime;
         } catch(e) {
-            Logger.error(e);
+            Logger.error(e as string);
         } finally {
             updateQueued = false;
             updateRunning = false;

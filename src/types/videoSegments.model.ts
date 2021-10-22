@@ -5,13 +5,20 @@ import {UserID} from "./user.model";
 export type VideoDuration = number & { __videoDurationBrand: unknown };
 export type Category = (BaseCategory | "intro" | "outro" | "preview" | "music_offtopic" | "highlight") & { __categoryBrand: unknown };
 
+export enum ActionType {
+    Skip = "skip",
+    Mute = "mute",
+}
+
 export interface IncomingVideoSegment {
     category: Category;
     segment: string[];
+	actionType: ActionType;
 }
 
 export interface VideoSegment {
     category: Category;
+	actionType: ActionType;
     segment: number[];
     UUID: SegmentUUID;
     videoDuration: VideoDuration;
@@ -19,6 +26,7 @@ export interface VideoSegment {
 
 export interface VideoDBSegment extends BaseDBSegment<Category> {
     category: Category;
+	actionType: ActionType;
     startTime: number;
     endTime: number;
     videoDuration: VideoDuration;
@@ -41,7 +49,6 @@ export enum CategoryActionType {
     Skippable,
     POI
 }
-
 
 export interface LockCategory {
     category: Category,

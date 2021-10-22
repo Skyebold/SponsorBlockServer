@@ -53,9 +53,9 @@ CREATE INDEX IF NOT EXISTS "warnings_issueTime"
 
 -- lockCategories
 
-CREATE INDEX IF NOT EXISTS "noSegments_videoID"
+CREATE INDEX IF NOT EXISTS "lockCategories_videoID"
     ON public."lockCategories" USING btree
-    ("videoID" COLLATE pg_catalog."default" ASC NULLS LAST, category COLLATE pg_catalog."default" ASC NULLS LAST)
+    ("videoID" COLLATE pg_catalog."default" ASC NULLS LAST, service COLLATE pg_catalog."default" ASC NULLS LAST, category COLLATE pg_catalog."default" ASC NULLS LAST)
     TABLESPACE pg_default;
 
 -- categoryVotes
@@ -70,4 +70,15 @@ CREATE INDEX IF NOT EXISTS "categoryVotes_UUID_public"
 CREATE INDEX IF NOT EXISTS "shadowBannedUsers_index"
     ON public."shadowBannedUsers" USING btree
     ("userID" COLLATE pg_catalog."default" ASC NULLS LAST)
+    TABLESPACE pg_default;
+
+-- videoInfo
+CREATE INDEX IF NOT EXISTS "videoInfo_videoID"
+    ON public."videoInfo" USING btree
+    ("videoID" COLLATE pg_catalog."default" ASC NULLS LAST)
+    TABLESPACE pg_default;
+
+CREATE INDEX IF NOT EXISTS "videoInfo_channelID"
+    ON public."videoInfo" USING btree
+    ("channelID" COLLATE pg_catalog."default" ASC NULLS LAST)
     TABLESPACE pg_default;

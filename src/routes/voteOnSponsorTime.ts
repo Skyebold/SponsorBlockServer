@@ -1,19 +1,20 @@
-import {Request, Response} from "express";
-import {Logger} from "../utils/logger";
-import {isUserVIP} from "../utils/isUserVIP";
-import fetch from "node-fetch";
-import {getMaxResThumbnail, YouTubeAPI} from "../utils/youtubeApi";
-import {db, privateDB} from "../databases/databases";
-import {dispatchEvent, getVoteAuthor, getVoteAuthorRaw} from "../utils/webhookUtils";
-import {getFormattedTime} from "../utils/getFormattedTime";
-import {getIP} from "../utils/getIP";
-import {getHash} from "../utils/getHash";
-import {config} from "../config";
+import { Request, Response } from "express";
+import { Logger } from "../utils/logger";
+import { isUserVIP } from "../utils/isUserVIP";
+import { getMaxResThumbnail, YouTubeAPI } from "../utils/youtubeApi";
+import { APIVideoInfo } from "../types/youtubeApi.model";
+import { db, privateDB } from "../databases/databases";
+import { dispatchEvent, getVoteAuthor, getVoteAuthorRaw } from "../utils/webhookUtils";
+import { getFormattedTime } from "../utils/getFormattedTime";
+import { getIP } from "../utils/getIP";
+import { getHash } from "../utils/getHash";
+import { config } from "../config";
 import { UserID } from "../types/user.model";
-import {  HashedIP, IPAddress, SegmentUUID, Service, VideoID, VideoIDHash } from "../types/segments.model";
+import { HashedIP, IPAddress, SegmentUUID, Service, VideoID, VideoIDHash, Visibility } from "../types/segments.model";
 import { getCategoryActionType } from "../utils/categoryInfo";
 import { QueryCacher } from "../utils/queryCacher";
-import { Category, CategoryActionType } from "../types/videoSegments.model";
+import axios from "axios";
+import { Category, CategoryActionType, VideoDuration } from "../types/videoSegments.model";
 
 const voteTypes = {
     normal: 0,
@@ -47,6 +48,30 @@ interface VoteData {
     incrementAmount: number;
     oldIncrementAmount: number;
     finalResponse: FinalResponse;
+}
+
+function getYouTubeVideoInfo(videoID: VideoID, ignoreCache = false): Promise<APIVideoInfo> {
+    if (config.newLeafURLs !== null) {
+        return YouTubeAPI.listVideos(videoID, ignoreCache);
+    } else {
+        return null;
+    }
+}
+
+const videoDurationChanged = (segmentDuration: number, APIDuration: number) => (APIDuration > 0 && Math.abs(segmentDuration - APIDuration) > 2);
+
+async function checkVideoDurationChange(UUID: SegmentUUID) {
+    const { videoDuration, videoID, service } = await db.prepare("get", `select "videoDuration", "videoID", "service" from "sponsorTimes" where "UUID" = ?`, [UUID]);
+    let apiVideoInfo: APIVideoInfo = null;
+    if (service == Service.YouTube) {
+        // don't use cache since we have no information about the video length
+        apiVideoInfo = await getYouTubeVideoInfo(videoID);
+    }
+    const apiVideoDuration = apiVideoInfo?.data?.lengthSeconds as VideoDuration;
+    if (videoDurationChanged(videoDuration, apiVideoDuration)) {
+        Logger.info(`Video duration changed for ${videoID} from ${videoDuration} to ${apiVideoDuration}`);
+        await db.prepare("run", `UPDATE "sponsorTimes" SET "videoDuration" = ? WHERE "UUID" = ?`, [apiVideoDuration, UUID]);
+    }
 }
 
 async function sendWebhooks(voteData: VoteData) {
@@ -112,40 +137,34 @@ async function sendWebhooks(voteData: VoteData) {
 
             // Send discord message
             if (webhookURL !== null && !isUpvote) {
-                fetch(webhookURL, {
-                    method: "POST",
-                    body: JSON.stringify({
-                        "embeds": [{
-                            "title": data?.title,
-                            "url": `https://www.youtube.com/watch?v=${submissionInfoRow.videoID}&t=${(submissionInfoRow.startTime.toFixed(0) - 2)}`,
-                            "description": `**${voteData.row.votes} Votes Prior | \
-                                ${(voteData.row.votes + voteData.incrementAmount - voteData.oldIncrementAmount)} Votes Now | ${voteData.row.views} \
-                                Views**\n\n**Submission ID:** ${voteData.UUID}\
-                                \n**Category:** ${submissionInfoRow.category}\
-                                \n\n**Submitted by:** ${submissionInfoRow.userName}\n${submissionInfoRow.userID}\
-                                \n\n**Total User Submissions:** ${submissionInfoRow.count}\
-                                \n**Ignored User Submissions:** ${submissionInfoRow.disregarded}\
-                                \n\n**Timestamp:** \
-                                ${getFormattedTime(submissionInfoRow.startTime)} to ${getFormattedTime(submissionInfoRow.endTime)}`,
-                            "color": 10813440,
-                            "author": {
-                                "name": voteData.finalResponse?.webhookMessage ??
-                                        voteData.finalResponse?.finalMessage ??
-                                        getVoteAuthor(userSubmissionCountRow.submissionCount, voteData.isVIP, voteData.isOwnSubmission),
-                            },
-                            "thumbnail": {
-                                "url": getMaxResThumbnail(data) || "",
-                            },
-                        }],
-                    }),
-                    headers: {
-                        "Content-Type": "application/json"
-                    }
+                axios.post(webhookURL, {
+                    "embeds": [{
+                        "title": data?.title,
+                        "url": `https://www.youtube.com/watch?v=${submissionInfoRow.videoID}&t=${(submissionInfoRow.startTime.toFixed(0) - 2)}s#requiredSegment=${voteData.UUID}`,
+                        "description": `**${voteData.row.votes} Votes Prior | \
+                            ${(voteData.row.votes + voteData.incrementAmount - voteData.oldIncrementAmount)} Votes Now | ${voteData.row.views} \
+                            Views**\n\n**Submission ID:** ${voteData.UUID}\
+                            \n**Category:** ${submissionInfoRow.category}\
+                            \n\n**Submitted by:** ${submissionInfoRow.userName}\n${submissionInfoRow.userID}\
+                            \n\n**Total User Submissions:** ${submissionInfoRow.count}\
+                            \n**Ignored User Submissions:** ${submissionInfoRow.disregarded}\
+                            \n\n**Timestamp:** \
+                            ${getFormattedTime(submissionInfoRow.startTime)} to ${getFormattedTime(submissionInfoRow.endTime)}`,
+                        "color": 10813440,
+                        "author": {
+                            "name": voteData.finalResponse?.webhookMessage ??
+                                    voteData.finalResponse?.finalMessage ??
+                                    getVoteAuthor(userSubmissionCountRow.submissionCount, voteData.isVIP, voteData.isOwnSubmission),
+                        },
+                        "thumbnail": {
+                            "url": getMaxResThumbnail(data) || "",
+                        },
+                    }],
                 })
-                    .then(async res => {
+                    .then(res => {
                         if (res.status >= 400) {
                             Logger.error("Error sending reported submission Discord hook");
-                            Logger.error(JSON.stringify((await res.text())));
+                            Logger.error(JSON.stringify((res.data)));
                             Logger.error("\n");
                         }
                     })
@@ -169,8 +188,8 @@ async function categoryVote(UUID: SegmentUUID, userID: UserID, isVIP: boolean, i
         return res.sendStatus(finalResponse.finalStatus);
     }
 
-    const videoInfo = (await db.prepare("get", `SELECT "category", "videoID", "hashedVideoID", "service", "userID" FROM "sponsorTimes" WHERE "UUID" = ?`,
-        [UUID])) as {category: Category, videoID: VideoID, hashedVideoID: VideoIDHash, service: Service, userID: UserID};
+    const videoInfo = (await db.prepare("get", `SELECT "category", "videoID", "hashedVideoID", "service", "userID", "locked" FROM "sponsorTimes" WHERE "UUID" = ?`,
+        [UUID])) as {category: Category, videoID: VideoID, hashedVideoID: VideoIDHash, service: Service, userID: UserID, locked: number};
     if (!videoInfo) {
         // Submission doesn't exist
         return res.status(400).send("Submission doesn't exist.");
@@ -181,6 +200,17 @@ async function categoryVote(UUID: SegmentUUID, userID: UserID, isVIP: boolean, i
     }
     if (getCategoryActionType(category) !== CategoryActionType.Skippable) {
         return res.status(400).send("Cannot vote for this category");
+    }
+
+    // Ignore vote if the next category is locked
+    const nextCategoryLocked = await db.prepare("get", `SELECT "videoID", "category" FROM "lockCategories" WHERE "videoID" = ? AND "service" = ? AND "category" = ?`, [videoInfo.videoID, videoInfo.service, category]);
+    if (nextCategoryLocked && !isVIP) {
+        return res.sendStatus(200);
+    }
+
+    // Ignore vote if the segment is locked
+    if (!isVIP && videoInfo.locked === 1) {
+        return res.sendStatus(200);
     }
 
     const nextCategoryInfo = await db.prepare("get", `select votes from "categoryVotes" where "UUID" = ? and category = ?`, [UUID, category]);
@@ -297,7 +327,8 @@ export async function voteOnSponsorTime(req: Request, res: Response): Promise<Re
     if (!isVIP && type != 1) {
         const isSegmentLocked = async () => !!(await db.prepare("get", `SELECT "locked" FROM "sponsorTimes" WHERE "UUID" = ?`, [UUID]))?.locked;
         const isVideoLocked = async () => !!(await db.prepare("get", `SELECT "lockCategories".category from "lockCategories" left join "sponsorTimes"
-            on ("lockCategories"."videoID" = "sponsorTimes"."videoID" and "lockCategories".category = "sponsorTimes".category)
+            on ("lockCategories"."videoID" = "sponsorTimes"."videoID" and 
+            "lockCategories"."service" = "sponsorTimes"."service" and "lockCategories".category = "sponsorTimes".category)
             where "UUID" = ?`, [UUID]));
 
         if (await isSegmentLocked() || await isVideoLocked()) {
@@ -431,8 +462,10 @@ export async function voteOnSponsorTime(req: Request, res: Response): Promise<Re
             //oldIncrementAmount will be zero is row is null
             await db.prepare("run", `UPDATE "sponsorTimes" SET "${columnName}" = "${columnName}" + ? WHERE "UUID" = ?`, [incrementAmount - oldIncrementAmount, UUID]);
             if (isVIP && incrementAmount > 0 && voteTypeEnum === voteTypes.normal) {
-                // Unide and Lock this submission
-                await db.prepare("run", 'UPDATE "sponsorTimes" SET locked = 1, hidden = 0 WHERE "UUID" = ?', [UUID]);
+                // check for video duration change
+                await checkVideoDurationChange(UUID);
+                // Unhide and Lock this submission
+                await db.prepare("run", 'UPDATE "sponsorTimes" SET locked = 1, hidden = 0, "shadowHidden" = 0 WHERE "UUID" = ?', [UUID]);
 
                 // Reset video duration in case that caused it to be hidden
                 if (videoInfo.hidden) await db.prepare("run", 'UPDATE "sponsorTimes" SET "videoDuration" = 0 WHERE "UUID" = ?', [UUID]);
@@ -459,7 +492,7 @@ export async function voteOnSponsorTime(req: Request, res: Response): Promise<Re
         }
         return res.status(finalResponse.finalStatus).send(finalResponse.finalMessage ?? undefined);
     } catch (err) {
-        Logger.error(err);
-        return res.status(500).json({error: "Internal error creating segment vote"});
+        Logger.error(err as string);
+        return res.status(500).json({ error: "Internal error creating segment vote" });
     }
 }

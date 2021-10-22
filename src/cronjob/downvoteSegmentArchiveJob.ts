@@ -3,7 +3,7 @@ import { CronJob } from "cron";
 import { config as serverConfig } from "../config";
 import { Logger } from "../utils/logger";
 import { db } from "../databases/databases";
-import { DBSegment } from "../types/segments.model";
+import { VideoDBSegment } from "../types/videoSegments.model";
 
 const jobConfig = serverConfig?.crons?.downvoteSegmentArchive;
 
@@ -25,11 +25,11 @@ export const archiveDownvoteSegment = async (dayLimit: number, voteLimit: number
             timeNow,
             threshold
         ]
-    ) as DBSegment[];
+    ) as VideoDBSegment[];
 
     } catch (err) {
         Logger.error("Execption when insert segment in archivedSponsorTimes");
-        Logger.error(err);
+        Logger.error(err as string);
         return 1;
     }
 
@@ -43,11 +43,11 @@ export const archiveDownvoteSegment = async (dayLimit: number, voteLimit: number
             timeNow,
             threshold
         ]
-    ) as DBSegment[];
+    ) as VideoDBSegment[];
 
     } catch (err) {
         Logger.error("Execption when deleting segment in sponsorTimes");
-        Logger.error(err);
+        Logger.error(err as string);
         return 1;
     }
 

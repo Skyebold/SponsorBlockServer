@@ -37,7 +37,7 @@
 | views | INTEGER | not null |
 | category | TEXT | not null, default 'sponsor' |
 | actionType | TEXT | not null, default 'skip' |
-| service | TEXT | not null, default 'Youtube' |
+| service | TEXT | not null, default 'YouTube' |
 | videoDuration | INTEGER | not null, default '0' |
 | hidden | INTEGER | not null, default '0' |
 | reputation | REAL | not null, default '0' |
@@ -96,10 +96,11 @@
 | category | TEXT | not null |
 | hashedVideoID | TEXT | not null, default '' |
 | reason | TEXT | not null, default '' |
+| service | TEXT | not null, default 'YouTube' |
 
 | index | field |
 | -- | :--: |
-| noSegments_videoID | videoID |
+| lockCategories_videoID | videoID, service, category |
 
 ### warnings  
 
@@ -126,6 +127,21 @@
 | -- | :--: |
 | shadowBannedUsers_index | userID |
 
+### videoInfo  
+
+| Name | Type | |
+| -- | :--: | -- |
+| videoID | TEXT | not null |
+| channelID | TEXT | not null |
+| title | TEXT | not null |
+| published | REAL | not null |
+| genreUrl | TEXT | not null |
+
+| index | field |
+| -- | :--: |
+| videoInfo_videoID | timeSubmitted |
+| videoInfo_channelID | userID |
+
 ### unlistedVideos  
 
 | Name | Type | |
@@ -135,6 +151,7 @@
 | views | TEXT | not null |
 | channelID | TEXT | not null |
 | timeSubmitted | INTEGER | not null |
+| service | TEXT | not null, default 'YouTube' |
 
 ### config
 
@@ -159,7 +176,7 @@
 | views | INTEGER | not null |
 | category | TEXT | not null, default 'sponsor' |
 | actionType | TEXT | not null, default 'skip' |
-| service | TEXT | not null, default 'Youtube' |
+| service | TEXT | not null, default 'YouTube' |
 | videoDuration | INTEGER | not null, default '0' |
 | hidden | INTEGER | not null, default '0' |
 | reputation | REAL | not null, default '0' |
@@ -208,11 +225,12 @@
 | videoID | TEXT | not null |
 | hashedIP | TEXT | not null |
 | timeSubmitted | INTEGER | not null |
+| service | TEXT | not null, default 'YouTube' |
 
 | index | field |
 | -- | :--: |
 | sponsorTimes_hashedIP | hashedIP |
-| privateDB_sponsorTimes_videoID | videoID |
+| privateDB_sponsorTimes_videoID_v2 | videoID, service |
 
 ### config  
 

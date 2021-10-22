@@ -1,16 +1,15 @@
-import {config} from "../config";
-import {Logger} from "../utils/logger";
-import {db, privateDB} from "../databases/databases";
-import {getMaxResThumbnail, YouTubeAPI} from "../utils/youtubeApi";
-import {getSubmissionUUID} from "../utils/getSubmissionUUID";
-import fetch from "node-fetch";
-import {getHash} from "../utils/getHash";
-import {getIP} from "../utils/getIP";
-import {getFormattedTime} from "../utils/getFormattedTime";
-import {isUserTrustworthy} from "../utils/isUserTrustworthy";
-import {dispatchEvent} from "../utils/webhookUtils";
-import {Request, Response} from "express";
-import { ActionType, SegmentUUID, Service, VideoID } from "../types/segments.model";
+import { config } from "../config";
+import { Logger } from "../utils/logger";
+import { db, privateDB } from "../databases/databases";
+import { getMaxResThumbnail, YouTubeAPI } from "../utils/youtubeApi";
+import { getSubmissionUUID } from "../utils/getSubmissionUUID";
+import { getHash } from "../utils/getHash";
+import { getIP } from "../utils/getIP";
+import { getFormattedTime } from "../utils/getFormattedTime";
+import { isUserTrustworthy } from "../utils/isUserTrustworthy";
+import { dispatchEvent } from "../utils/webhookUtils";
+import { Request, Response } from "express";
+import { SegmentUUID, Service, VideoID } from "../types/segments.model";
 import { deleteLockCategories } from "./deleteLockCategories";
 import { getCategoryActionType } from "../utils/categoryInfo";
 import { QueryCacher } from "../utils/queryCacher";
@@ -19,7 +18,9 @@ import { APIVideoData, APIVideoInfo } from "../types/youtubeApi.model";
 import { UserID } from "../types/user.model";
 import { isUserVIP } from "../utils/isUserVIP";
 import { parseUserAgent } from "../utils/userAgent";
-import {Category, CategoryActionType, IncomingVideoSegment, VideoDuration} from "../types/videoSegments.model";
+import {ActionType, Category, CategoryActionType, IncomingVideoSegment, VideoDuration} from "../types/videoSegments.model";
+import { getService } from "../utils/getService";
+import axios from "axios";
 
 type CheckResult = {
     pass: boolean,
@@ -33,7 +34,7 @@ const CHECK_PASS: CheckResult = {
     errorCode: 0
 };
 
-async function sendWebhookNotification(userID: string, videoID: string, UUID: string, submissionCount: number, youtubeData: APIVideoData, {submissionStart, submissionEnd}: { submissionStart: number; submissionEnd: number; }, segmentInfo: any) {
+async function sendWebhookNotification(userID: string, videoID: string, UUID: string, submissionCount: number, youtubeData: APIVideoData, { submissionStart, submissionEnd }: { submissionStart: number; submissionEnd: number; }, segmentInfo: any) {
     const row = await db.prepare("get", `SELECT "userName" FROM "userNames" WHERE "userID" = ?`, [userID]);
     const userName = row !== undefined ? row.userName : null;
 
@@ -66,7 +67,7 @@ async function sendWebhooks(apiVideoInfo: APIVideoInfo, userID: string, videoID:
     if (apiVideoInfo && service == Service.YouTube) {
         const userSubmissionCountRow = await db.prepare("get", `SELECT count(*) as "submissionCount" FROM "sponsorTimes" WHERE "userID" = ?`, [userID]);
 
-        const {data, err} = apiVideoInfo;
+        const { data, err } = apiVideoInfo;
         if (err) return;
 
         const startTime = parseFloat(segmentInfo.segment[0]);
@@ -80,28 +81,22 @@ async function sendWebhooks(apiVideoInfo: APIVideoInfo, userID: string, videoID:
         // Then send a notification to discord
         if (config.discordFirstTimeSubmissionsWebhookURL === null || userSubmissionCountRow.submissionCount > 1) return;
 
-        fetch(config.discordFirstTimeSubmissionsWebhookURL, {
-            method: "POST",
-            body: JSON.stringify({
-                "embeds": [{
-                    "title": data?.title,
-                    "url": `https://www.youtube.com/watch?v=${videoID}&t=${(parseInt(startTime.toFixed(0)) - 2)}`,
-                    "description": `Submission ID: ${UUID}\
-                        \n\nTimestamp: \
-                        ${getFormattedTime(startTime)} to ${getFormattedTime(endTime)}\
-                        \n\nCategory: ${segmentInfo.category}`,
-                    "color": 10813440,
-                    "author": {
-                        "name": userID,
-                    },
-                    "thumbnail": {
-                        "url": getMaxResThumbnail(data) || "",
-                    },
-                }],
-            }),
-            headers: {
-                "Content-Type": "application/json"
-            }
+        axios.post(config.discordFirstTimeSubmissionsWebhookURL, {
+            "embeds": [{
+                "title": data?.title,
+                "url": `https://www.youtube.com/watch?v=${videoID}&t=${(parseInt(startTime.toFixed(0)) - 2)}s#requiredSegment=${UUID}`,
+                "description": `Submission ID: ${UUID}\
+                    \n\nTimestamp: \
+                    ${getFormattedTime(startTime)} to ${getFormattedTime(endTime)}\
+                    \n\nCategory: ${segmentInfo.category}`,
+                "color": 10813440,
+                "author": {
+                    "name": userID,
+                },
+                "thumbnail": {
+                    "url": getMaxResThumbnail(data) || "",
+                },
+            }],
         })
             .then(res => {
                 if (res.status >= 400) {
@@ -136,28 +131,22 @@ async function sendWebhooksNB(userID: string, videoID: string, UUID: string, sta
     // Send discord message
     if (config.discordNeuralBlockRejectWebhookURL === null) return;
 
-    fetch(config.discordNeuralBlockRejectWebhookURL, {
-        method: "POST",
-        body: JSON.stringify({
-            "embeds": [{
-                "title": ytData.items[0].snippet.title,
-                "url": `https://www.youtube.com/watch?v=${videoID}&t=${(parseFloat(startTime.toFixed(0)) - 2)}`,
-                "description": `**Submission ID:** ${UUID}\
-                    \n**Timestamp:** ${getFormattedTime(startTime)} to ${getFormattedTime(endTime)}\
-                    \n**Predicted Probability:** ${probability}\
-                    \n**Category:** ${category}\
-                    \n**Submitted by:** ${submittedBy}\
-                    \n**Total User Submissions:** ${submissionInfoRow.count}\
-                    \n**Ignored User Submissions:** ${submissionInfoRow.disregarded}`,
-                "color": 10813440,
-                "thumbnail": {
-                    "url": ytData.items[0].snippet.thumbnails.maxres ? ytData.items[0].snippet.thumbnails.maxres.url : "",
-                },
-            }],
-        }),
-        headers: {
-            "Content-Type": "application/json"
-        }
+    axios.post(config.discordNeuralBlockRejectWebhookURL, {
+        "embeds": [{
+            "title": ytData.items[0].snippet.title,
+            "url": `https://www.youtube.com/watch?v=${videoID}&t=${(parseFloat(startTime.toFixed(0)) - 2)}`,
+            "description": `**Submission ID:** ${UUID}\
+                \n**Timestamp:** ${getFormattedTime(startTime)} to ${getFormattedTime(endTime)}\
+                \n**Predicted Probability:** ${probability}\
+                \n**Category:** ${category}\
+                \n**Submitted by:** ${submittedBy}\
+                \n**Total User Submissions:** ${submissionInfoRow.count}\
+                \n**Ignored User Submissions:** ${submissionInfoRow.disregarded}`,
+            "color": 10813440,
+            "thumbnail": {
+                "url": ytData.items[0].snippet.thumbnails.maxres ? ytData.items[0].snippet.thumbnails.maxres.url : "",
+            },
+        }]
     })
         .then(res => {
             if (res.status >= 400) {
@@ -180,9 +169,9 @@ async function sendWebhooksNB(userID: string, videoID: string, UUID: string, sta
 //   false for a pass - it was confusing and lead to this bug - any use of this function in
 //   the future could have the same problem.
 async function autoModerateSubmission(apiVideoInfo: APIVideoInfo,
-    submission: { videoID: VideoID; userID: UserID; segments: IncomingSegment[] }) {
+    submission: { videoID: VideoID; userID: UserID; segments: IncomingVideoSegment[], service: Service }) {
     if (apiVideoInfo) {
-        const {err, data} = apiVideoInfo;
+        const { err, data } = apiVideoInfo;
         if (err) return false;
 
         const duration = apiVideoInfo?.data?.lengthSeconds;
@@ -236,11 +225,11 @@ async function autoModerateSubmission(apiVideoInfo: APIVideoInfo,
         // Check NeuralBlock
         const neuralBlockURL = config.neuralBlockURL;
         if (!neuralBlockURL) return false;
-        const response = await fetch(`${neuralBlockURL}/api/checkSponsorSegments?vid=${submission.videoID}
-            &segments=${nbString.substring(0, nbString.length - 1)}`);
-        if (!response.ok) return false;
+        const response = await axios.get(`${neuralBlockURL}/api/checkSponsorSegments?vid=${submission.videoID}
+            &segments=${nbString.substring(0, nbString.length - 1)}`, { validateStatus: () => true });
+        if (response.status !== 200) return false;
 
-        const nbPredictions = await response.json();
+        const nbPredictions = response.data;
         let nbDecision = false;
         let predictionIdx = 0; //Keep track because only sponsor categories were submitted
         for (let i = 0; i < segments.length; i++) {
@@ -250,7 +239,7 @@ async function autoModerateSubmission(apiVideoInfo: APIVideoInfo,
                     const startTime = parseFloat(segments[i].segment[0]);
                     const endTime = parseFloat(segments[i].segment[1]);
 
-                    const UUID = getSubmissionUUID(submission.videoID, segments[i].actionType, submission.userID, startTime, endTime);
+                    const UUID = getSubmissionUUID(submission.videoID, segments[i].actionType, submission.userID, startTime, endTime, submission.service);
                     // Send to Discord
                     // Note, if this is too spammy. Consider sending all the segments as one Webhook
                     sendWebhooksNB(submission.userID, submission.videoID, UUID, startTime, endTime, segments[i].category, nbPredictions.probabilities[predictionIdx], data);
@@ -274,7 +263,7 @@ async function autoModerateSubmission(apiVideoInfo: APIVideoInfo,
     }
 }
 
-async function getYouTubeVideoInfo(videoID: VideoID, ignoreCache = false): Promise<APIVideoInfo> {
+function getYouTubeVideoInfo(videoID: VideoID, ignoreCache = false): Promise<APIVideoInfo> {
     if (config.newLeafURLs !== null) {
         return YouTubeAPI.listVideos(videoID, ignoreCache);
     } else {
@@ -299,7 +288,7 @@ async function checkUserActiveWarning(userID: string): Promise<CheckResult> {
     if (warnings?.length >= config.maxNumberOfActiveWarnings) {
         const defaultMessage = "Submission rejected due to a warning from a moderator. This means that we noticed you were making some common mistakes"
                                 + " that are not malicious, and we just want to clarify the rules. "
-                                + "Could you please send a message in discord.gg/SponsorBlock or matrix.to/#/+sponsor:ajay.app so we can further help you? "
+                                + "Could you please send a message in discord.gg/SponsorBlock or matrix.to/#/#sponsor:ajay.app so we can further help you? "
                                 + `Your userID is ${userID}.`;
 
         return {
@@ -325,6 +314,15 @@ function checkInvalidFields(videoID: any, userID: any, segments: Array<any>): Ch
     if (!Array.isArray(segments) || segments.length < 1) {
         invalidFields.push("segments");
     }
+    // validate start and end times (no : marks)
+    for (const segmentPair of segments) {
+        const startTime = segmentPair.segment[0];
+        const endTime = segmentPair.segment[1];
+        if ((typeof startTime === "string" && startTime.includes(":")) ||
+            (typeof endTime === "string" && endTime.includes(":"))) {
+            invalidFields.push("segment time");
+        }
+    }
 
     if (invalidFields.length !== 0) {
         // invalid request
@@ -340,17 +338,17 @@ function checkInvalidFields(videoID: any, userID: any, segments: Array<any>): Ch
     return CHECK_PASS;
 }
 
-async function checkEachSegmentValid(userID: string, videoID: VideoID
-    , segments: Array<any>, service: string, isVIP: boolean, lockedCategoryList: Array<any>): Promise<CheckResult> {
+async function checkEachSegmentValid(userID: string, videoID: VideoID,
+    segments: IncomingVideoSegment[], service: string, isVIP: boolean, lockedCategoryList: Array<any>): Promise<CheckResult> {
 
     for (let i = 0; i < segments.length; i++) {
         if (segments[i] === undefined || segments[i].segment === undefined || segments[i].category === undefined) {
             //invalid request
-            return { pass: false, errorMessage: "One of your segments are invalid", errorCode: 400};
+            return { pass: false, errorMessage: "One of your segments are invalid", errorCode: 400 };
         }
 
         if (!config.categoryList.includes(segments[i].category)) {
-            return { pass: false, errorMessage: "Category doesn't exist.", errorCode: 400};
+            return { pass: false, errorMessage: "Category doesn't exist.", errorCode: 400 };
         }
 
         // Reject segment if it's in the locked categories list
@@ -363,12 +361,16 @@ async function checkEachSegmentValid(userID: string, videoID: VideoID
                 errorCode: 403,
                 errorMessage:
                     `New submissions are not allowed for the following category: ` +
-                    `'${segments[i].category}'. A moderator has decided that no new segments are needed and that all current segments of this category are timed perfectly.\n` +
+                    `'${segments[i].category}'. A moderator has decided that no new segments are needed on this video and that all current segments of this category are timed perfectly.\n` +
                     `${lockedCategoryList[lockIndex].reason?.length !== 0 ? `\nLock reason: '${lockedCategoryList[lockIndex].reason}'` : ""}\n` +
                     `${(segments[i].category === "sponsor" ? "\nMaybe the segment you are submitting is a different category that you have not enabled and is not a sponsor. " +
                     "Categories that aren't sponsor, such as self-promotion can be enabled in the options.\n" : "")}` +
-                    `\nIf you believe this is incorrect, please contact someone on discord.gg/SponsorBlock or matrix.to/#/+sponsor:ajay.app`
+                    `\nIf you believe this is incorrect, please contact someone on discord.gg/SponsorBlock or matrix.to/#/#sponsor:ajay.app`
             };
+        }
+
+        if (!config.categorySupport[segments[i].category]?.includes(segments[i].actionType)) {
+            return { pass: false, errorMessage: "ActionType is not supported with this category.", errorCode: 400 };
         }
 
         const startTime = parseFloat(segments[i].segment[0]);
@@ -379,19 +381,24 @@ async function checkEachSegmentValid(userID: string, videoID: VideoID
                 || (getCategoryActionType(segments[i].category) === CategoryActionType.Skippable && startTime === endTime)
                 || (getCategoryActionType(segments[i].category) === CategoryActionType.POI && startTime !== endTime)) {
             //invalid request
-            return { pass: false, errorMessage: "One of your segments times are invalid (too short, startTime before endTime, etc.)", errorCode: 400};
+            return { pass: false, errorMessage: "One of your segments times are invalid (too short, startTime before endTime, etc.)", errorCode: 400 };
+        }
+
+        // Check for POI segments before some seconds
+        if (!isVIP && getCategoryActionType(segments[i].category) === CategoryActionType.POI && startTime < config.poiMinimumStartTime) {
+            return { pass: false, errorMessage: `POI cannot be that early`, errorCode: 400 };
         }
 
         if (!isVIP && segments[i].category === "sponsor" && Math.abs(startTime - endTime) < 1) {
             // Too short
-            return { pass: false, errorMessage: "Sponsors must be longer than 1 second long", errorCode: 400};
+            return { pass: false, errorMessage: "Sponsors must be longer than 1 second long", errorCode: 400 };
         }
 
         //check if this info has already been submitted before
         const duplicateCheck2Row = await db.prepare("get", `SELECT COUNT(*) as count FROM "sponsorTimes" WHERE "startTime" = ?
-            and "endTime" = ? and "category" = ? and "videoID" = ? and "service" = ?`, [startTime, endTime, segments[i].category, videoID, service]);
+            and "endTime" = ? and "category" = ? and "actionType" = ? and "videoID" = ? and "service" = ?`, [startTime, endTime, segments[i].category, segments[i].actionType, videoID, service]);
         if (duplicateCheck2Row.count > 0) {
-            return { pass: false, errorMessage: "Sponsors has already been submitted before.", errorCode: 409};
+            return { pass: false, errorMessage: "Sponsors has already been submitted before.", errorCode: 409 };
         }
     }
 
@@ -401,7 +408,8 @@ async function checkEachSegmentValid(userID: string, videoID: VideoID
 async function checkByAutoModerator(videoID: any, userID: any, segments: Array<any>, isVIP: boolean, service:string, apiVideoInfo: APIVideoInfo, decreaseVotes: number): Promise<CheckResult & { decreaseVotes: number; } > {
     // Auto moderator check
     if (!isVIP && service == Service.YouTube) {
-        const autoModerateResult = await autoModerateSubmission(apiVideoInfo, {userID, videoID, segments});//startTime, endTime, category: segments[i].category});
+        const autoModerateResult = await autoModerateSubmission(apiVideoInfo, { userID, videoID, segments, service });//startTime, endTime, category: segments[i].category});
+
         if (autoModerateResult == "Rejected based on NeuralBlock predictions.") {
             // If NB automod rejects, the submission will start with -2 votes.
             // Note, if one submission is bad all submissions will be affected.
@@ -425,8 +433,8 @@ async function checkByAutoModerator(videoID: any, userID: any, segments: Array<a
     };
 }
 
-async function updateDataIfVideoDurationChange(videoID: VideoID, service: string, videoDuration: VideoDuration, videoDurationParam: VideoDuration) {
-    let lockedCategoryList = await db.prepare("all", 'SELECT category, reason from "lockCategories" where "videoID" = ?', [videoID]);
+async function updateDataIfVideoDurationChange(videoID: VideoID, service: Service, videoDuration: VideoDuration, videoDurationParam: VideoDuration) {
+    let lockedCategoryList = await db.prepare("all", 'SELECT category, reason from "lockCategories" where "videoID" = ? AND "service" = ?', [videoID, service]);
 
     const previousSubmissions = await db.prepare("all",
         `SELECT "videoDuration", "UUID" 
@@ -443,8 +451,8 @@ async function updateDataIfVideoDurationChange(videoID: VideoID, service: string
 
     let apiVideoInfo: APIVideoInfo = null;
     if (service == Service.YouTube) {
-        // Don't use cache if we don't know the video duraton, or the client claims that it has changed
-        apiVideoInfo = await getYouTubeVideoInfo(videoID, !videoDurationParam || videoDurationChanged(videoDurationParam));
+        // Don't use cache if we don't know the video duration, or the client claims that it has changed
+        apiVideoInfo = await getYouTubeVideoInfo(videoID, !videoDurationParam || previousSubmissions.length === 0 || videoDurationChanged(videoDurationParam));
     }
     const apiVideoDuration = apiVideoInfo?.data?.lengthSeconds as VideoDuration;
     if (!videoDurationParam || (apiVideoDuration && Math.abs(videoDurationParam - apiVideoDuration) > 2)) {
@@ -459,7 +467,7 @@ async function updateDataIfVideoDurationChange(videoID: VideoID, service: string
             await db.prepare("run", `UPDATE "sponsorTimes" SET "hidden" = 1 WHERE "UUID" = ?`, [submission.UUID]);
         }
         lockedCategoryList = [];
-        deleteLockCategories(videoID, null);
+        deleteLockCategories(videoID, null, service);
     }
 
     return {
@@ -472,7 +480,7 @@ async function updateDataIfVideoDurationChange(videoID: VideoID, service: string
 // Disable max submissions for now
 // Disable IP ratelimiting for now
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function checkRateLimit(userID:string, videoID: VideoID, timeSubmitted: number, hashedIP: string, options: {
+async function checkRateLimit(userID:string, videoID: VideoID, service: Service, timeSubmitted: number, hashedIP: string, options: {
     enableCheckByIP: boolean;
     enableCheckByUserID: boolean;
 } = {
@@ -483,7 +491,7 @@ async function checkRateLimit(userID:string, videoID: VideoID, timeSubmitted: nu
 
     if (options.enableCheckByIP) {
         //check to see if this ip has submitted too many sponsors today
-        const rateLimitCheckRow = await privateDB.prepare("get", `SELECT COUNT(*) as count FROM "sponsorTimes" WHERE "hashedIP" = ? AND "videoID" = ? AND "timeSubmitted" > ?`, [hashedIP, videoID, yesterday]);
+        const rateLimitCheckRow = await privateDB.prepare("get", `SELECT COUNT(*) as count FROM "sponsorTimes" WHERE "hashedIP" = ? AND "videoID" = ? AND "timeSubmitted" > ? AND "service" = ?`, [hashedIP, videoID, yesterday, service]);
 
         if (rateLimitCheckRow.count >= 10) {
             //too many sponsors for the same video from the same ip address
@@ -513,12 +521,9 @@ async function checkRateLimit(userID:string, videoID: VideoID, timeSubmitted: nu
 }
 
 function proxySubmission(req: Request) {
-    fetch(`${config.proxySubmission}/api/skipSegments?userID=${req.query.userID}&videoID=${req.query.videoID}`, {
-        method: "POST",
-        body: req.body,
-    })
-        .then(async res => {
-            Logger.debug(`Proxy Submission: ${res.status} (${(await res.text())})`);
+    axios.post(`${config.proxySubmission}/api/skipSegments?userID=${req.query.userID}&videoID=${req.query.videoID}`, req.body)
+        .then(res => {
+            Logger.debug(`Proxy Submission: ${res.status} (${res.data})`);
         })
         .catch(() => {
             Logger.error("Proxy Submission: Failed to make call");
@@ -528,10 +533,7 @@ function proxySubmission(req: Request) {
 function preprocessInput(req: Request) {
     const videoID = req.query.videoID || req.body.videoID;
     const userID = req.query.userID || req.body.userID;
-    let service: Service = req.query.service ?? req.body.service ?? Service.YouTube;
-    if (!Object.values(Service).some((val) => val === service)) {
-        service = Service.YouTube;
-    }
+    const service = getService(req.query.service, req.body.service);
     const videoDurationParam: VideoDuration = (parseFloat(req.query.videoDuration || req.body.videoDuration) || 0) as VideoDuration;
     const videoDuration = videoDurationParam;
 
@@ -555,7 +557,7 @@ function preprocessInput(req: Request) {
 
     const userAgent = req.query.userAgent ?? req.body.userAgent ?? parseUserAgent(req.get("user-agent")) ?? "";
 
-    return {videoID, userID, service, videoDuration, videoDurationParam, segments, userAgent};
+    return { videoID, userID, service, videoDuration, videoDurationParam, segments, userAgent };
 }
 
 export async function postSkipSegments(req: Request, res: Response): Promise<Response> {
@@ -564,7 +566,7 @@ export async function postSkipSegments(req: Request, res: Response): Promise<Res
     }
 
     // eslint-disable-next-line prefer-const
-    let {videoID, userID, service, videoDuration, videoDurationParam, segments, userAgent} = preprocessInput(req);
+    let { videoID, userID, service, videoDuration, videoDurationParam, segments, userAgent } = preprocessInput(req);
 
     const invalidCheckResult = checkInvalidFields(videoID, userID, segments);
     if (!invalidCheckResult.pass) {
@@ -613,7 +615,7 @@ export async function postSkipSegments(req: Request, res: Response): Promise<Res
         //get current time
         const timeSubmitted = Date.now();
 
-        // const rateLimitCheckResult = checkRateLimit(userID, videoID, timeSubmitted, hashedIP);
+        // const rateLimitCheckResult = checkRateLimit(userID, videoID, service, timeSubmitted, hashedIP);
         // if (!rateLimitCheckResult.pass) {
         //     return res.status(rateLimitCheckResult.errorCode).send(rateLimitCheckResult.errorMessage);
         // }
@@ -635,7 +637,7 @@ export async function postSkipSegments(req: Request, res: Response): Promise<Res
             //this can just be a hash of the data
             //it's better than generating an actual UUID like what was used before
             //also better for duplication checking
-            const UUID = getSubmissionUUID(videoID, segmentInfo.actionType, userID, parseFloat(segmentInfo.segment[0]), parseFloat(segmentInfo.segment[1]));
+            const UUID = getSubmissionUUID(videoID, segmentInfo.actionType, userID, parseFloat(segmentInfo.segment[0]), parseFloat(segmentInfo.segment[1]), service);
             const hashedVideoID = getHash(videoID, 1);
 
             const startingLocked = isVIP ? 1 : 0;
@@ -648,7 +650,12 @@ export async function postSkipSegments(req: Request, res: Response): Promise<Res
                 );
 
                 //add to private db as well
-                await privateDB.prepare("run", `INSERT INTO "sponsorTimes" VALUES(?, ?, ?)`, [videoID, hashedIP, timeSubmitted]);
+                await privateDB.prepare("run", `INSERT INTO "sponsorTimes" VALUES(?, ?, ?, ?)`, [videoID, hashedIP, timeSubmitted, service]);
+
+                await db.prepare("run", `INSERT INTO "videoInfo" ("videoID", "channelID", "title", "published", "genreUrl") 
+                    SELECT ?, ?, ?, ?, ?
+                    WHERE NOT EXISTS (SELECT 1 FROM "videoInfo" WHERE "videoID" = ?)`, [
+                    videoID, apiVideoInfo?.data?.authorId || "", apiVideoInfo?.data?.title || "", apiVideoInfo?.data?.published || 0, apiVideoInfo?.data?.genreUrl || "", videoID]);
 
                 // Clear redis cache for this video
                 QueryCacher.clearVideoCache({
@@ -671,7 +678,7 @@ export async function postSkipSegments(req: Request, res: Response): Promise<Res
             });
         }
     } catch (err) {
-        Logger.error(err);
+        Logger.error(err as string);
         return res.sendStatus(500);
     }
 

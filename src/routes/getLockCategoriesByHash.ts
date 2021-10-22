@@ -1,8 +1,9 @@
-import {db} from "../databases/databases";
-import {Logger} from "../utils/logger";
-import {Request, Response} from "express";
-import {hashPrefixTester} from "../utils/hashPrefixTester";
-import { Category, VideoID, VideoIDHash } from "../types/segments.model";
+import { db } from "../databases/databases";
+import { Logger } from "../utils/logger";
+import { Request, Response } from "express";
+import { hashPrefixTester } from "../utils/hashPrefixTester";
+import { VideoID, VideoIDHash } from "../types/segments.model";
+import { Category } from "../types/videoSegments.model";
 
 interface LockResultByHash {
     videoID: VideoID,
@@ -54,7 +55,7 @@ export async function getLockCategoriesByHash(req: Request, res: Response): Prom
         // merge all locks
         return res.send(mergeLocks(lockedRows));
     } catch (err) {
-        Logger.error(err);
+        Logger.error(err as string);
         return res.sendStatus(500);
     }
 }

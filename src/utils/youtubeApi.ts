@@ -1,8 +1,8 @@
-import fetch from "node-fetch";
-import {config} from "../config";
-import {Logger} from "./logger";
+import { config } from "../config";
+import { Logger } from "./logger";
 import { APIVideoData, APIVideoInfo } from "../types/youtubeApi.model";
 import DiskCache from "./diskCache";
+import axios from "axios";
 
 export class YouTubeAPI {
     static async listVideos(videoID: string, ignoreCache = false): Promise<APIVideoInfo> {
@@ -20,32 +20,32 @@ export class YouTubeAPI {
                     return { err: null, data: JSON.parse(data) };
                 }
             } catch (err) {
-                return { err };
+                return { err: err as string | boolean, data: null };
             }
         }
 
-        if (!config.newLeafURLs || config.newLeafURLs.length <= 0) return {err: "NewLeaf URL not found", data: null};
+        if (!config.newLeafURLs || config.newLeafURLs.length <= 0) return { err: "NewLeaf URL not found", data: null };
 
         try {
-            const result = await fetch(`${config.newLeafURLs[Math.floor(Math.random() * config.newLeafURLs.length)]}/api/v1/videos/${videoID}`, { method: "GET" });
+            const result = await axios.get(`${config.newLeafURLs[Math.floor(Math.random() * config.newLeafURLs.length)]}/api/v1/videos/${videoID}`);
 
-            if (result.ok) {
-                const data = await result.json();
+            if (result.status === 200) {
+                const data = result.data;
                 if (data.error) {
                     Logger.warn(`NewLeaf API Error for ${videoID}: ${data.error}`);
                     return { err: data.error, data: null };
                 }
-
-                DiskCache.set(cacheKey, JSON.stringify(data))
+                const apiResult = data as APIVideoData;
+                DiskCache.set(cacheKey, JSON.stringify(apiResult))
                     .catch((err: any) => Logger.warn(err))
                     .then(() => Logger.debug(`YouTube API: video information cache set for: ${videoID}`));
 
-                return { err: false, data };
+                return { err: false, data: apiResult };
             } else {
                 return { err: result.statusText, data: null };
             }
         } catch (err) {
-            return {err, data: null};
+            return { err: err as string | boolean, data: null };
         }
     }
 }
