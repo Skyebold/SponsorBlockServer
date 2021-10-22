@@ -271,7 +271,7 @@ function getYouTubeVideoInfo(videoID: VideoID, ignoreCache = false): Promise<API
     }
 }
 
-async function checkUserActiveWarning(userID: string): Promise<CheckResult> {
+export async function checkUserActiveWarning(userID: string): Promise<CheckResult> {
     const MILLISECONDS_IN_HOUR = 3600000;
     const now = Date.now();
     const warnings = (await db.prepare("all",
