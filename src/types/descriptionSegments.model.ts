@@ -8,6 +8,7 @@ export interface IncomingDescriptionSegment {
 	firstCharacters: string;
 	lastCharacters: string;
 	length: number;
+	videoOnly: number;
 }
 
 export interface DescriptionSegment extends IncomingDescriptionSegment {
@@ -20,4 +21,5 @@ export interface DescriptionDBSegment extends BaseDBSegment<Category> {
 	firstCharacters: string;  // Up to 5 characters to begin matching against
 	lastCharacters: string;  // Up to 5 characters to end matching against
 	length: number; // Total number of characters to match description segment against
+	videoOnly: number; // Bool, whether to try considering this redaction as only for one video, or channel wide
 }

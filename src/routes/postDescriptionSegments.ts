@@ -107,7 +107,8 @@ function preprocessInput(req: Request) {
 			length: parseInt(req.query.length as string),
 			descriptionHash: req.query.descriptionHash as string,
 			firstCharacters: req.query.firstCharacters as string,
-			lastCharacters: req.query.lastCharacters as string
+			lastCharacters: req.query.lastCharacters as string,
+			videoOnly: parseInt(req.query.videoOnly as string)
         }];
     }
 
@@ -211,9 +212,9 @@ export async function postDescriptionSegments(req: Request, res: Response): Prom
             try {
 				// Set up sponsor description
                 await db.prepare("run", `INSERT INTO "sponsorDescriptions" 
-                    ("videoID", "channelID", "firstCharacters", "lastCharacters", "length", "descriptionHash", "locked", "UUID", "userID", "timeSubmitted", "views", "category", "service", "reputation", "shadowHidden", "hashedVideoID", "userAgent")
-                    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                    videoID, channelID, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length, segmentInfo.descriptionHash, startingLocked, UUID, userID, timeSubmitted, 0, segmentInfo.category, service, reputation, shadowBanned, hashedVideoID, userAgent
+                    ("videoID", "channelID", "firstCharacters", "lastCharacters", "length", "descriptionHash", "locked", "UUID", "userID", "timeSubmitted", "views", "category", "service", "reputation", "shadowHidden", "hashedVideoID", "userAgent", "videoOnly")
+                    VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                    videoID, channelID, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length, segmentInfo.descriptionHash, startingLocked, UUID, userID, timeSubmitted, 0, segmentInfo.category, service, reputation, shadowBanned, hashedVideoID, userAgent, segmentInfo.videoOnly
                 ],
                 );
 
@@ -293,7 +294,10 @@ async function checkEachSegmentValid(userID: string, videoID: VideoID, channelID
     for (let i = 0; i < segments.length; i++) {
         if (segments[i] === undefined || segments[i].descriptionHash === undefined || segments[i].category === undefined || 
 			segments[i].firstCharacters === undefined || segments[i].lastCharacters === undefined ||
-			segments[i].length === undefined) {
+			segments[i].length === undefined || segments[i].videoOnly === undefined ||  
+			(segments[i].videoOnly != 0 && segments[i].videoOnly != 1) // bool
+		)
+		{
             //invalid request
             return { pass: false, errorMessage: "One of your segments are invalid", errorCode: 400 };
         }

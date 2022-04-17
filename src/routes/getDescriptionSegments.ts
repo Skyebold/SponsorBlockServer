@@ -75,7 +75,8 @@ async function prepareCategorySegments(req: Request, videoID: VideoID, category:
         UUID: chosenSegment.UUID,
         locked: chosenSegment.locked,
         votes: chosenSegment.votes,
-        videoDuration: chosenSegment.videoDuration
+        videoDuration: chosenSegment.videoDuration,
+		videoOnly: chosenSegment.videoOnly
     })));
 }
 
@@ -163,8 +164,12 @@ async function getDescriptionSegmentsFromDBByHash(hashedVideoIDPrefix: VideoIDHa
     const fetchFromDB = () => db
         .prepare(
             "all",
-            `SELECT "videoID", "firstCharacters", "lastCharacters", "length", "descriptionHash", "votes", "locked", "UUID", "userID", "category", "reputation", "shadowHidden", "hashedVideoID", "timeSubmitted" FROM "sponsorDescriptions"
-            WHERE "hashedVideoID" LIKE ? AND "service" = ? AND "hidden" = 0`,
+            `SELECT "firstCharacters", "lastCharacters", "length", "descriptionHash", "votes", "locked", "UUID", "userID", "category", "reputation", "shadowHidden", "timeSubmitted" FROM "sponsorDescriptions" 
+			INNER JOIN sponsorDescriptionsPerVideoVotes
+					ON sponsorDescriptions.descriptionID = sponsorDescriptionsPerVideoVotes.descriptionID
+					WHERE 
+					(sponsorDescriptions.hashedVideoID = ? OR (sponsorDescriptions.channelID = ? AND sponsorDescriptions.videoOnly = 0))			
+					AND "service" = ? AND "hidden" = 0`,
             [`${hashedVideoIDPrefix}%`, service]
         ) as Promise<DescriptionDBSegment[]>;
 
@@ -180,8 +185,12 @@ async function getDescriptionSegmentsFromDBByVideoID(videoID: VideoID, channelID
         .prepare(
             "all",
             `SELECT "firstCharacters", "lastCharacters", "length", "descriptionHash", "votes", "locked", "UUID", "userID", "category", "reputation", "shadowHidden", "timeSubmitted" FROM "sponsorDescriptions" 
-            WHERE "videoID" = ? AND "service" = ? AND "hidden" = 0`,
-            [videoID, service]
+			INNER JOIN sponsorDescriptionsPerVideoVotes
+					ON sponsorDescriptions.descriptionID = sponsorDescriptionsPerVideoVotes.descriptionID
+					WHERE 
+					(sponsorDescriptions.videoID = ? OR (sponsorDescriptions.channelID = ? AND sponsorDescriptions.videoOnly = 0))			
+					AND "service" = ? AND "hidden" = 0`,
+            [videoID, channelID, service]
         ) as Promise<DescriptionDBSegment[]>;
 
     return await QueryCacher.get(fetchFromDB, skipSegmentsKey(videoID, service));
