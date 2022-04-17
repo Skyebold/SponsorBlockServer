@@ -1,6 +1,6 @@
 import { getHash } from "./getHash";
 import { HashedValue } from "../types/hash.model";
-import { VideoID, Service } from "../types/segments.model";
+import { VideoID, Service, ChannelID } from "../types/segments.model";
 import { UserID } from "../types/user.model";
 import { ActionType } from "../types/videoSegments.model";
 
@@ -17,6 +17,7 @@ export function getSubmissionUUID(
 
 export function getDescriptionSubmissionUUID(
     videoID: VideoID,
+	channelID: ChannelID,
     userID: UserID,
     service: Service,
 	descriptionHash: string,
@@ -24,5 +25,5 @@ export function getDescriptionSubmissionUUID(
 	lastCharacters: string,  // Up to 5 characters to end matching against
 	length: number // Total number of characters to match description segment against
 ) : HashedValue {
-    return `5${getHash(`${videoID}${firstCharacters}${lastCharacters}${descriptionHash}${userID}${length}${service}`, 1)}` as HashedValue;
+    return `5${getHash(`${videoID}${channelID}${firstCharacters}${lastCharacters}${descriptionHash}${userID}${length}${service}`, 1)}` as HashedValue;
 }

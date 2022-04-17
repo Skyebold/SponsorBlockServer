@@ -12,7 +12,8 @@ import {
     VideoIDHash,
     VotableObject,
     VideoData,
-    Visibility
+    Visibility,
+	ChannelID
 } from "../types/segments.model";
 import { getCategoryActionType } from "../utils/categoryInfo";
 import { getHash } from "../utils/getHash";
@@ -78,7 +79,7 @@ async function prepareCategorySegments(req: Request, videoID: VideoID, category:
     })));
 }
 
-async function getDescriptionSegmentsByVideoID(req: Request, videoID: VideoID, categories: Category[],
+async function getDescriptionSegmentsByVideoID(req: Request, videoID: VideoID, channelID: ChannelID, categories: Category[],
     requiredSegments: SegmentUUID[], service: Service): Promise<DescriptionSegment[]> {
     const cache: SegmentCache = { shadowHiddenSegmentIPs: {} };
     const segments: DescriptionSegment[] = [];
@@ -87,7 +88,7 @@ async function getDescriptionSegmentsByVideoID(req: Request, videoID: VideoID, c
         categories = categories.filter((category) => !/[^a-z|_|-]/.test(category));
         if (categories.length === 0) return null;
 
-        const segmentsByCategory: SBRecord<Category, DescriptionDBSegment[]> = (await getDescriptionSegmentsFromDBByVideoID(videoID, service))
+        const segmentsByCategory: SBRecord<Category, DescriptionDBSegment[]> = (await getDescriptionSegmentsFromDBByVideoID(videoID, channelID, service))
             .filter((segment: DescriptionDBSegment) => categories.includes(segment?.category))
             .reduce((acc: SBRecord<Category, DescriptionDBSegment[]>, segment: DescriptionDBSegment) => {
                 if (requiredSegments.includes(segment.UUID)) segment.required = true;
@@ -158,7 +159,7 @@ async function getDescriptionSegmentsByHash(req: Request, hashedVideoIDPrefix: V
 }
 */
 
-async function getDescriptionSegmentsFromDBByHash(hashedVideoIDPrefix: VideoIDHash, service: Service): Promise<DescriptionDBSegment[]> {
+async function getDescriptionSegmentsFromDBByHash(hashedVideoIDPrefix: VideoIDHash, channelID: ChannelID, service: Service): Promise<DescriptionDBSegment[]> {
     const fetchFromDB = () => db
         .prepare(
             "all",
@@ -174,7 +175,7 @@ async function getDescriptionSegmentsFromDBByHash(hashedVideoIDPrefix: VideoIDHa
     return await fetchFromDB();
 }
 
-async function getDescriptionSegmentsFromDBByVideoID(videoID: VideoID, service: Service): Promise<DescriptionDBSegment[]> {
+async function getDescriptionSegmentsFromDBByVideoID(videoID: VideoID, channelID: ChannelID, service: Service): Promise<DescriptionDBSegment[]> {
     const fetchFromDB = () => db
         .prepare(
             "all",
@@ -263,6 +264,13 @@ async function handleGetDescriptionSegments(req: Request, res: Response): Promis
         res.status(400).send("videoID not specified");
         return false;
     }
+
+	const channelID = req.query.channelID as ChannelID;
+    if (!videoID) {
+        res.status(400).send("channelID not specified");
+        return false;
+    }
+
     // Default to sponsor
     // If using params instead of JSON, only one category can be pulled
     const categories: Category[] = req.query.categories
@@ -305,7 +313,7 @@ async function handleGetDescriptionSegments(req: Request, res: Response): Promis
 
     const service = getService(req.query.service, req.body.service);
 
-    const segments = await getDescriptionSegmentsByVideoID(req, videoID, categories, requiredSegments, service);
+    const segments = await getDescriptionSegmentsByVideoID(req, videoID, channelID, categories, requiredSegments, service);
 
     if (segments === null || segments === undefined) {
         res.sendStatus(500);

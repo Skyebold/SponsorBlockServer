@@ -18,7 +18,7 @@ import { isUserVIP } from "../utils/isUserVIP";
 import { parseUserAgent } from "../utils/userAgent";
 import { getService } from "../utils/getService";
 import axios from "axios";
-import {BaseCategory, BaseDBSegment, SegmentUUID, VideoID} from "../types/segments.model";
+import {BaseCategory, BaseDBSegment, ChannelID, SegmentUUID, VideoID} from "../types/segments.model";
 import { getHash } from "../utils/getHash";
 import { checkUserActiveWarning } from "./postSkipSegments";
 import { IncomingDescriptionSegment } from "../types/descriptionSegments.model";
@@ -95,6 +95,7 @@ function checkInvalidFields(videoID: any, userID: any, segments:any): CheckResul
 
 function preprocessInput(req: Request) {
     const videoID = req.query.videoID || req.body.videoID;
+	const channelID = req.query.channelID || req.body.channelID;
     const userID = req.query.userID || req.body.userID;
     const service = getService(req.query.service, req.body.service);
 
@@ -112,7 +113,7 @@ function preprocessInput(req: Request) {
 
     const userAgent = req.query.userAgent ?? req.body.userAgent ?? parseUserAgent(req.get("user-agent")) ?? "";
 
-    return { videoID, userID, service, segments, userAgent };
+    return { videoID, channelID, userID, service, segments, userAgent };
 }
 
 function proxySubmission(req: Request) {
@@ -131,7 +132,7 @@ export async function postDescriptionSegments(req: Request, res: Response): Prom
     }
 
     // eslint-disable-next-line prefer-const
-    let { videoID, userID, service, segments, userAgent } = preprocessInput(req);
+    let { videoID, channelID, userID, service, segments, userAgent } = preprocessInput(req);
 
     const invalidCheckResult = checkInvalidFields(videoID, userID, segments);
     if (!invalidCheckResult.pass) {
@@ -152,7 +153,7 @@ export async function postDescriptionSegments(req: Request, res: Response): Prom
 
     // Check if all submissions are correct
 	let lockedCategoryList:any = []; // TODO: This should probably be checked for in future but was part of a video timings lookup call so I'm just stubbing this in for now...
-    const segmentCheckResult = await checkEachSegmentValid(userID, videoID, segments, service, isVIP, lockedCategoryList);
+    const segmentCheckResult = await checkEachSegmentValid(userID, channelID, videoID, segments, service, isVIP, lockedCategoryList);
     if (!segmentCheckResult.pass) {
         return res.status(segmentCheckResult.errorCode).send(segmentCheckResult.errorMessage);
     }
@@ -203,15 +204,41 @@ export async function postDescriptionSegments(req: Request, res: Response): Prom
             //this can just be a hash of the data
             //it's better than generating an actual UUID like what was used before
             //also better for duplication checking
-            const UUID = getDescriptionSubmissionUUID(videoID, userID, service, segmentInfo.descriptionHash, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length);
+            const UUID = getDescriptionSubmissionUUID(videoID, channelID, userID, service, segmentInfo.descriptionHash, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length);
             const hashedVideoID = getHash(videoID, 1);
 
             const startingLocked = isVIP ? 1 : 0;
             try {
+				// Set up sponsor description
                 await db.prepare("run", `INSERT INTO "sponsorDescriptions" 
-                    ("videoID", "firstCharacters", "lastCharacters", "length", "descriptionHash", "votes", "locked", "UUID", "userID", "timeSubmitted", "views", "category", "service", "reputation", "shadowHidden", "hashedVideoID", "userAgent")
+                    ("videoID", "channelID", "firstCharacters", "lastCharacters", "length", "descriptionHash", "locked", "UUID", "userID", "timeSubmitted", "views", "category", "service", "reputation", "shadowHidden", "hashedVideoID", "userAgent")
                     VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                    videoID, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length, segmentInfo.descriptionHash, startingVotes, startingLocked, UUID, userID, timeSubmitted, 0, segmentInfo.category, service, reputation, shadowBanned, hashedVideoID, userAgent
+                    videoID, channelID, segmentInfo.firstCharacters, segmentInfo.lastCharacters, segmentInfo.length, segmentInfo.descriptionHash, startingLocked, UUID, userID, timeSubmitted, 0, segmentInfo.category, service, reputation, shadowBanned, hashedVideoID, userAgent
+                ],
+                );
+
+				// Get row of newly inserted sponsor description (it will be needed for initing a vote pair)
+				let descriptionID = -1;
+				const fetchLastInsertFromDB = await db
+					.prepare(
+						"get",
+						`SELECT last_insert_rowid() as lastInsertedID`,
+						[]
+					);
+
+				if (fetchLastInsertFromDB !== undefined) {
+					descriptionID = fetchLastInsertFromDB.lastInsertedID;
+				} 
+				
+				if (descriptionID == -1)
+				{
+					throw new Error("Could not get ID of inserted Sponsor Description");
+				}
+
+				await db.prepare("run", `INSERT INTO "sponsorDescriptionsPerVideoVotes" 
+                    ("descriptionID", "videoID", "channelID", "votes")
+                    VALUES(?, ?, ?, ?)`, [
+						descriptionID, videoID, channelID, startingVotes
                 ],
                 );
 
@@ -260,7 +287,7 @@ export async function postDescriptionSegments(req: Request, res: Response): Prom
     return res.json(newSegments);
 }
 
-async function checkEachSegmentValid(userID: string, videoID: VideoID,
+async function checkEachSegmentValid(userID: string, videoID: VideoID, channelID: ChannelID,
     segments: IncomingDescriptionSegment[], service: string, isVIP: boolean, lockedCategoryList: Array<any>): Promise<CheckResult> {
 
     for (let i = 0; i < segments.length; i++) {

@@ -4,6 +4,7 @@ import {Category, VideoDuration} from "./videoSegments.model";
 
 export type SegmentUUID = string  & { __segmentUUIDBrand: unknown };
 export type VideoID = string & { __videoIDBrand: unknown };
+export type ChannelID = string & { __channelIDBrand: unknown };
 export type BaseCategory = ("sponsor" | "selfpromo" | "interaction") & { __categoryBrand: unknown };
 export type VideoIDHash = VideoID & HashedValue;
 export type IPAddress = string & { __ipAddressBrand: unknown };
